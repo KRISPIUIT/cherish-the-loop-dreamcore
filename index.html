@@ -1,40 +1,671 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dreamlit</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#090b12;color:#f8eaff;font:14px 'Courier New',monospace;display:flex;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}h1{margin:0 0 4px;letter-spacing:5px;text-shadow:0 0 14px #ff5db5}.sub{color:#c9b8d8;font-size:12px;margin-bottom:10px}#wrap{position:relative;width:min(94vw,760px);height:500px;border:3px solid #ff9ed8;border-radius:10px;box-shadow:0 0 25px #ff5db566;overflow:hidden}canvas{display:block;width:100%;height:100%;background:#111821}#scan{position:absolute;inset:0;pointer-events:none;background:linear-gradient(transparent 50%,#0004 50%);background-size:100% 4px}#hud{width:min(94vw,760px);display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin-top:10px;font-weight:bold}.bar{display:inline-block;width:170px;height:15px;border:2px solid #ff9ed8;background:#000;vertical-align:middle}.fill{height:100%;width:100%;background:linear-gradient(90deg,#ff9ed8,#ff5db5)}#controls{color:#c9b8d8;font-size:12px;margin-top:8px;text-align:center}button{display:none;margin-top:10px;padding:8px 16px;background:transparent;border:2px solid #ff9ed8;color:#f8eaff;font:700 14px 'Courier New';cursor:pointer}
-</style></head><body>
-<h1>DREAMLIT</h1><div class="sub">SUPER ILLIT • EL SUEÑO ABANDONADO</div>
-<div id="wrap"><canvas id="game" width="760" height="500"></canvas><div id="scan"></div></div>
-<div id="hud"><span>CORDURA: <i class="bar"><i id="sanity" class="fill"></i></i></span><span id="items">MATERIALES: 0</span><span id="status">Despiertas en el suelo...</span></div>
-<button id="restart">REINICIAR</button><div id="controls">Moverse: <b>WASD / Flechas</b> · Interactuar: <b>E</b> · Pulso de luz: <b>Espacio</b></div>
-<script>
-const c=document.querySelector('#game'),x=c.getContext('2d'),W=c.width,H=c.height,ui={s:document.querySelector('#sanity'),i:document.querySelector('#items'),t:document.querySelector('#status'),r:document.querySelector('#restart')};
-let keys={},state='intro',pulse=0,items=0;
-const p={x:65,y:440,r:11,sanity:100,inv:[]},monster={x:650,y:80,r:27,speed:1.2},door={x:700,y:410,w:35,h:55};
-const walls=[{x:90,y:60,w:18,h:190},{x:220,y:110,w:180,h:18},{x:355,y:50,w:18,h:190},{x:145,y:275,w:190,h:18},{x:445,y:145,w:18,h:180},{x:520,y:105,w:160,h:18},{x:600,y:300,w:18,h:115},{x:340,y:420,w:220,h:18},{x:80,y:430,w:170,h:18}];
-const safe=[{x:135,y:80,r:50},{x:300,y:215,r:58},{x:510,y:330,r:55},{x:180,y:380,r:48}];
-const things=[
-{x:115,y:160,n:'llave',got:false},{x:270,y:65,n:'cinta de vídeo',got:false},{x:525,y:75,n:'batería',got:false},{x:575,y:365,n:'tarjeta',got:false},{x:200,y:325,n:'linterna',got:false}
-];
-const girls=[
-{x:120,y:225,n:'YUNAH',saved:false,need:'llave',hint:'YUNAH: La llave está en el pasillo viejo. Busca los materiales.'},
-{x:555,y:180,n:'MINJU',saved:false,need:'cinta de vídeo',hint:'MINJU: Ayúdame a despertar... reproduce mi cinta en la sala de control.'},
-{x:305,y:85,n:'MOKA',saved:false,need:'batería',hint:'MOKA: Encontré poco... solo puedo darte esta pista: necesito una batería.'},
-{x:470,y:380,n:'WONHEE',saved:false,need:'tarjeta',hint:'WONHEE: Tengo materiales para ti. Te daré una tarjeta y una linterna.'},
-{x:665,y:245,n:'IROHA',saved:false,need:'linterna',hint:'IROHA: No puedo ver la salida. Ayúdame con la linterna.'}
-];
-function clamp(v,a,b){return Math.max(a,Math.min(b,v))}function d(a,b,c,d){return Math.hypot(a-c,b-d)}function hitWall(a,b,r){return walls.some(w=>d(clamp(a,w.x,w.x+w.w),clamp(b,w.y,w.y+w.h),a,b)<r+2)}function msg(t){ui.t.textContent=t}
-function reset(){state='intro';p.x=65;p.y=440;p.sanity=100;p.inv=[];items=0;monster.x=650;monster.y=80;monster.speed=1.2;things.forEach(z=>z.got=false);girls.forEach(z=>z.saved=false);ui.s.style.width='100%';ui.i.textContent='MATERIALES: 0';msg('Despiertas en el suelo...');ui.r.style.display='none'}
-function begin(){if(state==='intro'){state='play';msg('Eres trabajador de demolición. Encuentra a YUNAH.')}}
-function move(){let a=0,b=0;if(keys.ArrowUp||keys.KeyW)b--;if(keys.ArrowDown||keys.KeyS)b++;if(keys.ArrowLeft||keys.KeyA)a--;if(keys.ArrowRight||keys.KeyD)a++;if(a||b){let l=Math.hypot(a,b),nx=clamp(p.x+a/l*2.8,p.r,W-p.r),ny=clamp(p.y+b/l*2.8,p.r,H-p.r);if(!hitWall(nx,p.y,p.r))p.x=nx;if(!hitWall(p.x,ny,p.r))p.y=ny}}
-function collect(){things.forEach(z=>{if(!z.got&&d(p.x,p.y,z.x,z.y)<25){z.got=true;p.inv.push(z.n);items++;ui.i.textContent='MATERIALES: '+items;msg('Recoges '+z.n)}})}
-function interact(){girls.forEach(g=>{if(g.saved||d(p.x,p.y,g.x,g.y)>32)return;if(g.n==='MINJU'&&p.inv.includes('cinta de vídeo')){g.saved=true;msg('MINJU despierta: '+g.hint)}else if(p.inv.includes(g.need)){g.saved=true;msg(g.hint)}else msg(g.n+': todavía necesito '+g.need)});if(keys.KeyE&&girls[1].saved&&d(p.x,p.y,300,215)<55)msg('La cinta reproduce una voz: MINJU ha despertado.')}
-function enemy(){let dx=p.x-monster.x,dy=p.y-monster.y,q=Math.hypot(dx,dy)||1;if(q<270){monster.speed=1.85;monster.x+=dx/q*monster.speed;monster.y+=dy/q*monster.speed}else{monster.speed=1.2;monster.x+=Math.sin(Date.now()/800)*.3;monster.y+=Math.cos(Date.now()/900)*.3}monster.x=clamp(monster.x,monster.r,W-monster.r);monster.y=clamp(monster.y,monster.r,H-monster.r)}
-function update(){if(state!=='play')return;move();collect();if(keys.KeyE)interact();if(keys.Space&&!pulse){pulse=1}if(pulse){pulse+=5;let dx=monster.x-p.x,dy=monster.y-p.y,q=Math.hypot(dx,dy)||1;if(q<pulse+monster.r){monster.x+=dx/q*65;monster.y+=dy/q*65}if(pulse>85)pulse=0}enemy();let safeNow=safe.some(z=>d(p.x,p.y,z.x,z.y)<z.r),near=d(p.x,p.y,monster.x,monster.y)<95;if(near&&!safeNow)p.sanity-=.4;if(safeNow)p.sanity+=.2;p.sanity=clamp(p.sanity,0,100);ui.s.style.width=p.sanity+'%';if(p.sanity<=0||d(p.x,p.y,monster.x,monster.y)<38){state='lose';msg('El animal te encontró');ui.r.style.display='inline-block'}let all=girls.every(g=>g.saved);if(all&&d(p.x,p.y,door.x+18,door.y+25)<35){state='win';msg('¡Tú y las miembros escaparon!');ui.r.style.display='inline-block'}}
-function draw(){x.fillStyle='#111821';x.fillRect(0,0,W,H);x.strokeStyle='#1d2a35';for(let a=0;a<W;a+=30){x.beginPath();x.moveTo(a,0);x.lineTo(a,H);x.stroke()}for(let b=0;b<H;b+=30){x.beginPath();x.moveTo(0,b);x.lineTo(W,b);x.stroke()}safe.forEach(z=>{x.fillStyle='#9fffe022';x.beginPath();x.arc(z.x,z.y,z.r,0,7);x.fill();x.strokeStyle='#9fffe0';x.stroke()});walls.forEach(w=>{x.fillStyle='#302c40';x.fillRect(w.x,w.y,w.w,w.h);x.strokeStyle='#ff9ed8';x.strokeRect(w.x,w.y,w.w,w.h)});things.forEach(z=>{if(!z.got){x.fillStyle='#ffe899';x.fillRect(z.x-6,z.y-6,12,12)}});girls.forEach(g=>{if(!g.saved){x.fillStyle=g.n==='IROHA'?'#ff83bd':'#ddd2ff';x.beginPath();x.arc(g.x,g.y,11+Math.sin(Date.now()/180+g.x)*2,0,7);x.fill();x.fillStyle='#fff';x.font='9px Courier New';x.textAlign='center';x.fillText(g.n,g.x,g.y+21)}});x.fillStyle=girls.every(g=>g.saved)?'#9fffe0':'#382941';x.fillRect(door.x,door.y,door.w,door.h);x.strokeStyle='#ff9ed8';x.strokeRect(door.x,door.y,door.w,door.h);x.fillStyle='#fff';x.font='9px Courier New';x.fillText('SALIDA',door.x+18,door.y+30);if(pulse){x.strokeStyle='#ff9ed8';x.lineWidth=3;x.beginPath();x.arc(p.x,p.y,pulse,0,7);x.stroke()}x.fillStyle='#fff';x.beginPath();x.arc(p.x,p.y,p.r,0,7);x.fill();x.save();x.shadowBlur=20;x.shadowColor='#ff4f9e';x.fillStyle='#ed397e';x.beginPath();x.arc(monster.x,monster.y,monster.r+Math.sin(Date.now()/150)*3,0,7);x.fill();x.restore();x.fillStyle='#17121d';x.beginPath();x.arc(monster.x-9,monster.y-4,4,0,7);x.arc(monster.x+9,monster.y-4,4,0,7);x.fill();x.fillStyle='#25203a';x.beginPath();x.arc(monster.x,monster.y-27,18,Math.PI,0);x.fill();x.beginPath();x.moveTo(monster.x-14,monster.y-28);x.lineTo(monster.x-19,monster.y-49);x.lineTo(monster.x-4,monster.y-38);x.closePath();x.fill();x.beginPath();x.moveTo(monster.x+14,monster.y-28);x.lineTo(monster.x+19,monster.y-49);x.lineTo(monster.x+4,monster.y-38);x.closePath();x.fill();if(state==='intro'||state==='win'||state==='lose'){x.fillStyle='#000b';x.fillRect(0,0,W,H);x.fillStyle=state==='lose'?'#ff526a':'#f8eaff';x.font='bold 28px Courier New';x.textAlign='center';let title=state==='intro'?'DREAMLIT':state==='win'?'¡ESCAPARON DEL SUEÑO!':'EL SUEÑO TE DEVORÓ';x.fillText(title,W/2,170);x.font='16px Courier New';if(state==='intro'){x.fillText('Fuiste a vaciar SUPER ILLIT antes de su demolición.',W/2,220);x.fillText('Despertaste en un sueño. YUNAH está encerrada.',W/2,250);x.fillText('Pulsa ENTER para ayudar a todas y encontrar a IROHA.',W/2,310)}}}
-function loop(){update();draw();requestAnimationFrame(loop)}
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Enter')begin();if(e.code==='Space')e.preventDefault()});addEventListener('keyup',e=>keys[e.code]=false);ui.r.onclick=reset;reset();loop();
-</script></body></html>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dreamlit</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #151b2b 0%, #0b0f18 55%, #05070c 100%);
+      color: #fce9ff;
+      font-family: "Courier New", Courier, monospace;
+      overflow: hidden;
+    }
+    h1 {
+      margin: 0 0 6px;
+      letter-spacing: 4px;
+      font-size: clamp(1.6rem, 2vw, 2.4rem);
+      text-shadow: 0 0 14px rgba(255, 100, 195, 0.8);
+    }
+    .subtitle {
+      color: #d4bfdc;
+      font-size: 12px;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    #wrap {
+      position: relative;
+      width: min(92vw, 760px);
+      height: 500px;
+      border: 3px solid #ff9ed8;
+      border-radius: 10px;
+      background: rgba(14, 17, 22, 0.9);
+      box-shadow: 0 0 30px rgba(255, 125, 198, 0.45), inset 0 0 18px rgba(255, 125, 198, 0.12);
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #111821;
+    }
+    #scan {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.22) 50%);
+      background-size: 100% 4px;
+      opacity: .8;
+    }
+    #hud {
+      width: min(92vw, 760px);
+      display: grid;
+      grid-template-columns: 1.2fr auto auto;
+      gap: 12px;
+      align-items: center;
+      margin-top: 10px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .bar-box { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .bar {
+      width: 175px;
+      height: 16px;
+      border: 2px solid #ff9ed8;
+      background: rgba(0,0,0,0.65);
+      overflow: hidden;
+    }
+    #sanity-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #ff9ed8, #ff5cb4);
+      transition: width 0.12s linear;
+    }
+    #controls {
+      font-size: 12px;
+      color: #d5c3df;
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.7;
+    }
+    button {
+      display: none;
+      margin-top: 10px;
+      padding: 8px 18px;
+      background: transparent;
+      border: 2px solid #ff9ed8;
+      color: #fff;
+      font: 700 14px "Courier New", monospace;
+      cursor: pointer;
+      box-shadow: 0 0 12px rgba(255, 125, 198, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <h1>DREAMLIT</h1>
+  <div class="subtitle">SUPER ILLIT • EL SUEÑO DE COLORES</div>
+
+  <div id="wrap">
+    <canvas id="game" width="760" height="500"></canvas>
+    <div id="scan"></div>
+  </div>
+
+  <div id="hud">
+    <div class="bar-box">
+      <span>CORDURA:</span>
+      <div class="bar"><div id="sanity-fill"></div></div>
+    </div>
+    <div id="materials">FORMAS: 0/5</div>
+    <div id="status">Despiertas en el suelo...</div>
+  </div>
+
+  <button id="restart">REINICIAR</button>
+
+  <div id="controls">
+    Moverse: <b>WASD / Flechas</b> · Interactuar: <b>E</b> · Pulso de luz: <b>Espacio</b>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const ui = {
+      sanity: document.getElementById('sanity-fill'),
+      materials: document.getElementById('materials'),
+      status: document.getElementById('status'),
+      restart: document.getElementById('restart')
+    };
+
+    const W = canvas.width;
+    const H = canvas.height;
+    let keys = {};
+    let state = 'intro';
+    let pulse = 0;
+    let doorFlash = 0;
+
+    const player = {
+      x: 60,
+      y: 440,
+      r: 11,
+      speed: 2.8,
+      sanity: 100,
+      materials: 0,
+      saved: 0
+    };
+
+    const monster = {
+      x: 650,
+      y: 120,
+      r: 28,
+      speed: 1.2,
+      rage: false,
+      phase: 0,
+      warning: 0
+    };
+
+    const door = {
+      x: 690,
+      y: 395,
+      w: 40,
+      h: 60,
+      open: false,
+      active: false
+    };
+
+    const walls = [
+      { x: 90, y: 55, w: 18, h: 190 },
+      { x: 220, y: 110, w: 180, h: 18 },
+      { x: 356, y: 58, w: 18, h: 188 },
+      { x: 145, y: 270, w: 186, h: 18 },
+      { x: 444, y: 140, w: 18, h: 180 },
+      { x: 520, y: 110, w: 152, h: 18 },
+      { x: 600, y: 300, w: 18, h: 114 },
+      { x: 340, y: 420, w: 225, h: 18 },
+      { x: 80, y: 430, w: 170, h: 18 }
+    ];
+
+    const safeZones = [
+      { x: 135, y: 80, r: 52 },
+      { x: 300, y: 220, r: 60 },
+      { x: 510, y: 330, r: 60 },
+      { x: 180, y: 390, r: 50 }
+    ];
+
+    const forms = [
+      { color: 'roja', hex: '#ff5151', x: 108, y: 160, gained: false, member: 'YUNAH' },
+      { color: 'amarilla', hex: '#ffd95a', x: 265, y: 68, gained: false, member: 'WONHEE' },
+      { color: 'azul', hex: '#5ac8ff', x: 525, y: 80, gained: false, member: 'MOKA' },
+      { color: 'verde', hex: '#7dffb3', x: 200, y: 336, gained: false, member: 'MINJU' },
+      { color: 'violeta', hex: '#c68aff', x: 585, y: 360, gained: false, member: 'IROHA' }
+    ];
+
+    const members = [
+      { name: 'YUNAH', x: 120, y: 230, saved: false, hint: 'YUNAH: La puerta gira no por fuerza, sino por memoria.' },
+      { name: 'WONHEE', x: 560, y: 180, saved: false, hint: 'WONHEE: Te daré materiales para que el sueño no te trague.' },
+      { name: 'MOKA', x: 305, y: 90, saved: false, hint: 'MOKA: La forma azul no se ve en la luz, sino en el silencio.' },
+      { name: 'MINJU', x: 470, y: 380, saved: false, hint: 'MINJU: Ayúdame a despertar; el sueño me prende las horas.' },
+      { name: 'IROHA', x: 665, y: 250, saved: false, hint: 'IROHA: La pieza violeta sólo se abre si el resto despierta.' }
+    ];
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function dist(ax, ay, bx, by) {
+      return Math.hypot(ax - bx, ay - by);
+    }
+
+    function hitWall(x, y, r) {
+      for (const w of walls) {
+        const nearestX = clamp(x, w.x, w.x + w.w);
+        const nearestY = clamp(y, w.y, w.y + w.h);
+        if (dist(x, y, nearestX, nearestY) < r + 2) return true;
+      }
+      return false;
+    }
+
+    function setStatus(text) {
+      ui.status.textContent = `ESTADO: ${text}`;
+    }
+
+    function resetGame() {
+      player.x = 60;
+      player.y = 440;
+      player.speed = 2.8;
+      player.sanity = 100;
+      player.materials = 0;
+      player.saved = 0;
+      monster.x = 650;
+      monster.y = 120;
+      monster.speed = 1.2;
+      monster.rage = false;
+      monster.phase = 0;
+      monster.warning = 0;
+      door.open = false;
+      door.active = false;
+      pulse = 0;
+      doorFlash = 0;
+      keys = {};
+      forms.forEach(f => f.gained = false);
+      members.forEach(m => m.saved = false);
+      state = 'intro';
+      ui.sanity.style.width = '100%';
+      ui.materials.textContent = 'FORMAS: 0/5';
+      setStatus('Despiertas en el suelo...');
+      ui.restart.style.display = 'none';
+    }
+
+    function startGame() {
+      if (state === 'intro') {
+        state = 'play';
+        setStatus('yunas te llama desde la oscuridad');
+      }
+    }
+
+    function collectForms() {
+      for (const form of forms) {
+        if (!form.gained && dist(player.x, player.y, form.x, form.y) < 26) {
+          form.gained = true;
+          player.materials += 1;
+          ui.materials.textContent = `FORMAS: ${player.materials}/5`;
+          setStatus(`recoges la forma ${form.color}`);
+        }
+      }
+    }
+
+    function nearbyMember() {
+      for (const member of members) {
+        if (!member.saved && dist(player.x, player.y, member.x, member.y) < 34) {
+          return member;
+        }
+      }
+      return null;
+    }
+
+    function rescueMember() {
+      const member = nearbyMember();
+      if (!member) return;
+      if (member.name === 'YUNAH' && !forms[0].gained) {
+        setStatus('YUNAH: primero necesito que la forma roja salga a la luz');
+        return;
+      }
+      if (member.name === 'WONHEE' && !forms[1].gained) {
+        setStatus('WONHEE: la forma amarilla está escondida entre los materiales');
+        return;
+      }
+      if (member.name === 'MOKA' && !forms[2].gained) {
+        setStatus('MOKA: prueba donde el sueño se vuelve silencio');
+        return;
+      }
+      if (member.name === 'MINJU' && !forms[3].gained) {
+        setStatus('MINJU: no despiertas si no me traes la forma verde');
+        return;
+      }
+      if (member.name === 'IROHA' && !forms[4].gained) {
+        setStatus('IROHA: la forma violeta es la única que puede abrir la puerta');
+        return;
+      }
+
+      member.saved = true;
+      player.saved += 1;
+      setStatus(`${member.name} despierta y te guía`);
+      if (player.saved === 5) {
+        door.active = true;
+        doorFlash = 1;
+        setStatus('la puerta del sueño muestra sus cinco colores');
+      }
+    }
+
+    function updatePlayer() {
+      if (state !== 'play') return;
+
+      let dx = 0, dy = 0;
+      if (keys['ArrowUp'] || keys['KeyW']) dy -= 1;
+      if (keys['ArrowDown'] || keys['KeyS']) dy += 1;
+      if (keys['ArrowLeft'] || keys['KeyA']) dx -= 1;
+      if (keys['ArrowRight'] || keys['KeyD']) dx += 1;
+
+      if (dx !== 0 || dy !== 0) {
+        const len = Math.hypot(dx, dy) || 1;
+        const movX = (dx / len) * player.speed;
+        const movY = (dy / len) * player.speed;
+
+        const nextX = clamp(player.x + movX, player.r, W - player.r);
+        const nextY = clamp(player.y + movY, player.r, H - player.r);
+
+        if (!hitWall(nextX, player.y, player.r)) player.x = nextX;
+        if (!hitWall(player.x, nextY, player.r)) player.y = nextY;
+      }
+
+      if (keys['Space'] && !pulse) {
+        pulse = 1;
+      }
+
+      if (pulse) {
+        pulse += 4.8;
+        const dxM = monster.x - player.x;
+        const dyM = monster.y - player.y;
+        const distM = Math.hypot(dxM, dyM) || 1;
+        if (distM < pulse + monster.r + 16) {
+          monster.x += (dxM / distM) * 60;
+          monster.y += (dyM / distM) * 60;
+          monster.x = clamp(monster.x, monster.r, W - monster.r);
+          monster.y = clamp(monster.y, monster.r, H - monster.r);
+        }
+        if (pulse > 90) pulse = 0;
+      }
+
+      if (keys['KeyE']) {
+        rescueMember();
+      }
+
+      collectForms();
+    }
+
+    function updateMonster() {
+      if (state !== 'play') return;
+
+      const dx = player.x - monster.x;
+      const dy = player.y - monster.y;
+      const d = Math.hypot(dx, dy) || 1;
+
+      if (d < 250) {
+        monster.rage = true;
+        monster.speed = 1.9;
+      } else {
+        monster.rage = false;
+        monster.speed = 1.15;
+      }
+
+      const moveX = (dx / d) * monster.speed;
+      const moveY = (dy / d) * monster.speed;
+      const nx = clamp(monster.x + moveX, monster.r, W - monster.r);
+      const ny = clamp(monster.y + moveY, monster.r, H - monster.r);
+
+      if (!hitWall(nx, monster.y, monster.r)) monster.x = nx;
+      if (!hitWall(monster.x, ny, monster.r)) monster.y = ny;
+
+      monster.phase += 0.02;
+    }
+
+    function updateSanity() {
+      if (state !== 'play') return;
+
+      const inSafe = safeZones.some(z => dist(player.x, player.y, z.x, z.y) < z.r);
+      const near = dist(player.x, player.y, monster.x, monster.y) < 90;
+
+      if (near && !inSafe) player.sanity -= 0.35;
+      else if (inSafe) player.sanity += 0.2;
+      player.sanity = clamp(player.sanity, 0, 100);
+      ui.sanity.style.width = `${player.sanity}%`;
+
+      if (player.sanity <= 0 || dist(player.x, player.y, monster.x, monster.y) < player.r + monster.r + 2) {
+        state = 'lose';
+        setStatus('el sueño te devora');
+        ui.restart.style.display = 'inline-block';
+      }
+    }
+
+    function updateDoor() {
+      if (state !== 'play') return;
+      if (player.saved === 5 && dist(player.x, player.y, door.x + door.w / 2, door.y + door.h / 2) < 30) {
+        state = 'ending';
+        setStatus('la puerta se abre y te despiertas');
+        ui.restart.style.display = 'inline-block';
+      }
+    }
+
+    function update() {
+      if (state === 'intro') {
+        if (keys['Enter']) startGame();
+        return;
+      }
+      if (state !== 'play') return;
+      updatePlayer();
+      updateMonster();
+      updateSanity();
+      updateDoor();
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = '#111821';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = '#1d2a35';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < W; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 0; y < H; y += 30) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawSafeZones() {
+      safeZones.forEach(z => {
+        ctx.fillStyle = 'rgba(125, 255, 179, 0.1)';
+        ctx.beginPath();
+        ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#7dffb3';
+        ctx.stroke();
+      });
+    }
+
+    function drawWalls() {
+      walls.forEach(w => {
+        ctx.fillStyle = '#2d2a3f';
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.strokeStyle = '#ff9ed8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(w.x, w.y, w.w, w.h);
+      });
+    }
+
+    function drawForms() {
+      forms.forEach(f => {
+        if (!f.gained) {
+          ctx.fillStyle = f.hex;
+          ctx.fillRect(f.x - 8, f.y - 8, 16, 16);
+          ctx.strokeStyle = '#fff';
+          ctx.strokeRect(f.x - 8, f.y - 8, 16, 16);
+        }
+      });
+    }
+
+    function drawMembers() {
+      members.forEach(member => {
+        if (member.saved) return;
+        const pulse = Math.sin(Date.now() / 170 + member.x) * 2;
+        ctx.fillStyle = member.name === 'IROHA' ? '#dca0ff' : '#dfe3ff';
+        ctx.beginPath();
+        ctx.arc(member.x, member.y, 10 + pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(member.name, member.x, member.y + 20);
+      });
+    }
+
+    function drawDoor() {
+      const slots = [
+        { x: door.x + 6, y: door.y + 10, color: '#ff6060' },
+        { x: door.x + 11, y: door.y + 22, color: '#ffd95a' },
+        { x: door.x + 18, y: door.y + 10, color: '#5ac8ff' },
+        { x: door.x + 23, y: door.y + 22, color: '#7dffb3' },
+        { x: door.x + 16, y: door.y + 32, color: '#c68aff' }
+      ];
+
+      ctx.fillStyle = door.active ? '#8fffd2' : '#352d46';
+      ctx.fillRect(door.x, door.y, door.w, door.h);
+      ctx.strokeStyle = '#ffb3e6';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(door.x, door.y, door.w, door.h);
+
+      slots.forEach(s => {
+        if (door.active) {
+          ctx.fillStyle = s.color;
+          ctx.fillRect(s.x, s.y, 8, 8);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.fillRect(s.x, s.y, 8, 8);
+        }
+      });
+    }
+
+    function drawPlayer() {
+      ctx.save();
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#fff';
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = '#111';
+      ctx.fillRect(player.x - 4, player.y - 2, 2, 2);
+      ctx.fillRect(player.x + 2, player.y - 2, 2, 2);
+    }
+
+    function drawMonster() {
+      ctx.save();
+      const color = monster.rage ? '#ff7fa9' : '#ff4f9d';
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = color;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(monster.x, monster.y, monster.r + Math.sin(Date.now() / 180) * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // orejas de conejo
+      ctx.fillStyle = '#ffc4e3';
+      ctx.beginPath();
+      ctx.moveTo(monster.x - 12, monster.y - 22);
+      ctx.lineTo(monster.x - 20, monster.y - 52);
+      ctx.lineTo(monster.x - 4, monster.y - 24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(monster.x + 12, monster.y - 22);
+      ctx.lineTo(monster.x + 20, monster.y - 52);
+      ctx.lineTo(monster.x + 4, monster.y - 24);
+      ctx.closePath();
+      ctx.fill();
+
+      // ojos
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(monster.x - 8, monster.y - 4, 4, 0, Math.PI * 2);
+      ctx.arc(monster.x + 8, monster.y - 4, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#120c16';
+      ctx.beginPath();
+      ctx.arc(monster.x - 8, monster.y - 4, 2, 0, Math.PI * 2);
+      ctx.arc(monster.x + 8, monster.y - 4, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawPulse() {
+      if (!pulse) return;
+      ctx.strokeStyle = 'rgba(255, 159, 216, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, pulse, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawIntro() {
+      if (state !== 'intro') return;
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.7)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#f8eaff';
+      ctx.font = 'bold 30px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('DREAMLIT', W / 2, 155);
+      ctx.font = '18px Courier New';
+      ctx.fillText('Trabajabas en la demolición de SUPER ILLIT.', W / 2, 210);
+      ctx.fillText('Te desmayas y entras a un sueño de colores.', W / 2, 242);
+      ctx.fillText('YUNAH, WONHEE, MOKA, MINJU e IROHA están atrapadas.', W / 2, 274);
+      ctx.fillText('Pulsa ENTER para entrar al sueño', W / 2, 332);
+      ctx.fillText('Mueve: WASD/Flechas • E: ayudar • Espacio: pulso', W / 2, 390);
+    }
+
+    function drawEnding() {
+      if (state === 'lose') {
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#ff5d73';
+        ctx.font = 'bold 30px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('EL SUEÑO TE DEVORÓ', W / 2, H / 2 - 18);
+        ctx.font = '18px Courier New';
+        ctx.fillText('Pulsa reiniciar para volver a intentarlo', W / 2, H / 2 + 20);
+      }
+
+      if (state === 'ending') {
+        ctx.fillStyle = 'rgba(10, 10, 14, 0.8)';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = '#d8f9ff';
+        ctx.font = 'bold 28px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('DESPIERTAS', W / 2, 130);
+
+        ctx.font = '18px Courier New';
+        ctx.fillText('Las cinco miembros de ILLIT están frente a ti.', W / 2, 185);
+        ctx.fillText('No son recuerdos: son reales.', W / 2, 215);
+        ctx.fillText('Se convierten en tus amigas y tú decides no dejarlo morir.', W / 2, 245);
+        ctx.fillText('Juntos abrirán SUPER ILLIT otra vez.', W / 2, 275);
+        ctx.fillText('Y vuelven a renacer el color del sueño.', W / 2, 305);
+
+        const names = ['YUNAH', 'WONHEE', 'MOKA', 'MINJU', 'IROHA'];
+        names.forEach((n, i) => {
+          const x = 150 + i * 120;
+          ctx.fillStyle = ['#ff6a6a', '#ffd95a', '#5ac8ff', '#7dffb3', '#c68aff'][i];
+          ctx.fillText(n, x, 380);
+        });
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      drawSafeZones();
+      drawWalls();
+      drawForms();
+      drawMembers();
+      drawDoor();
+      drawPulse();
+      drawPlayer();
+      drawMonster();
+      drawIntro();
+      drawEnding();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'Enter' && state === 'intro') startGame();
+      if (e.code === 'Space') e.preventDefault();
+    });
+    addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    ui.restart.addEventListener('click', () => resetGame());
+    resetGame();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
