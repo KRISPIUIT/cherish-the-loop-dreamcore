@@ -18,12 +18,14 @@
       font-family: "Courier New", Courier, monospace;
       overflow: hidden;
     }
+
     h1 {
       margin: 0 0 6px;
       letter-spacing: 4px;
       font-size: clamp(1.6rem, 2vw, 2.4rem);
       text-shadow: 0 0 14px rgba(255, 100, 195, 0.8);
     }
+
     .subtitle {
       color: #d4bfdc;
       font-size: 12px;
@@ -31,6 +33,7 @@
       margin-bottom: 12px;
       text-align: center;
     }
+
     #wrap {
       position: relative;
       width: min(92vw, 760px);
@@ -41,12 +44,14 @@
       box-shadow: 0 0 30px rgba(255, 125, 198, 0.45), inset 0 0 18px rgba(255, 125, 198, 0.12);
       overflow: hidden;
     }
+
     canvas {
       display: block;
       width: 100%;
       height: 100%;
       background: #111821;
     }
+
     #scan {
       position: absolute;
       inset: 0;
@@ -55,6 +60,7 @@
       background-size: 100% 4px;
       opacity: .8;
     }
+
     #hud {
       width: min(92vw, 760px);
       display: grid;
@@ -65,7 +71,9 @@
       font-size: 14px;
       font-weight: bold;
     }
+
     .bar-box { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
     .bar {
       width: 175px;
       height: 16px;
@@ -73,12 +81,14 @@
       background: rgba(0,0,0,0.65);
       overflow: hidden;
     }
+
     #sanity-fill {
       width: 100%;
       height: 100%;
       background: linear-gradient(90deg, #ff9ed8, #ff5cb4);
       transition: width 0.12s linear;
     }
+
     #controls {
       font-size: 12px;
       color: #d5c3df;
@@ -86,6 +96,7 @@
       margin-top: 8px;
       line-height: 1.7;
     }
+
     button {
       display: none;
       margin-top: 10px;
@@ -97,6 +108,35 @@
       cursor: pointer;
       box-shadow: 0 0 12px rgba(255, 125, 198, 0.5);
     }
+
+    #dialogue {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      width: min(80%, 620px);
+      min-height: 70px;
+      padding: 12px 16px;
+      border: 2px solid rgba(255, 158, 216, 0.9);
+      background: rgba(18, 20, 29, 0.82);
+      color: #fce9ff;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: 0 0 18px rgba(255, 158, 216, 0.28);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+
+    #dialogue.visible {
+      opacity: 1;
+    }
+
+    .speaker {
+      color: #ffb0df;
+      font-weight: bold;
+      margin-right: 8px;
+    }
   </style>
 </head>
 <body>
@@ -106,6 +146,7 @@
   <div id="wrap">
     <canvas id="game" width="760" height="500"></canvas>
     <div id="scan"></div>
+    <div id="dialogue"></div>
   </div>
 
   <div id="hud">
@@ -130,7 +171,8 @@
       sanity: document.getElementById('sanity-fill'),
       materials: document.getElementById('materials'),
       status: document.getElementById('status'),
-      restart: document.getElementById('restart')
+      restart: document.getElementById('restart'),
+      dialogue: document.getElementById('dialogue')
     };
 
     const W = canvas.width;
@@ -138,7 +180,9 @@
     let keys = {};
     let state = 'intro';
     let pulse = 0;
-    let doorFlash = 0;
+    let dialogueTimer = 0;
+    let lastAmbientTalk = 0;
+    let ambientCooldown = 0;
 
     const player = {
       x: 60,
@@ -147,7 +191,9 @@
       speed: 2.8,
       sanity: 100,
       materials: 0,
-      saved: 0
+      saved: 0,
+      activeHint: null,
+      lastMoveAt: 0
     };
 
     const monster = {
@@ -201,8 +247,65 @@
       { name: 'WONHEE', x: 560, y: 180, saved: false, hint: 'WONHEE: Te daré materiales para que el sueño no te trague.' },
       { name: 'MOKA', x: 305, y: 90, saved: false, hint: 'MOKA: La forma azul no se ve en la luz, sino en el silencio.' },
       { name: 'MINJU', x: 470, y: 380, saved: false, hint: 'MINJU: Ayúdame a despertar; el sueño me prende las horas.' },
-      { name: 'IROHA', x: 665, y: 250, saved: false, hint: 'IROHA: La pieza violeta sólo se abre si el resto despierta.' }
+      { name: 'IROHA', x: 665, y: 245, saved: false, hint: 'IROHA: La pieza violeta sólo se abre si el resto despierta.' }
     ];
+
+    const ambientDialogues = {
+      YUNAH: [
+        '¿Y Minju? La sigo esperando...',
+        'No te quedes quieto. La fábrica está escuchando.',
+        'La puerta no se abre. Algo la está sosteniendo.',
+        'No te vayas sin mí.',
+        'No me dejes aquí mucho más.',
+        'El sueño tiene memoria.',
+        'No escuches el ruido del pasillo.'
+      ],
+      WONHEE: [
+        '¡Iroha! ¿Sigues con vida?',
+        'Los materiales siguen aquí, sólo están dormidos.',
+        'No te preocupes. Te doy lo que tengo.',
+        'Si te vas, no vuelvas sin nosotros.',
+        'El sueño no es más que un lugar cansado.',
+        'No te quedes quieto demasiado tiempo.',
+        'A veces la luz salva, a veces solo asusta.'
+      ],
+      MOKA: [
+        '¡Ush, ya me cansé!',
+        'La música sigue sonando aunque no haya nadie.',
+        'La forma azul no estaba en el brillo.',
+        'No todo lo bonito es seguro.',
+        'El sueño me hace recordar cosas que no fueron mías.',
+        'Hay silencio aquí y eso asusta más que los ruidos.',
+        'No me olvides, aunque el sitio quiera que lo haga.'
+      ],
+      MINJU: [
+        'La la la...',
+        'La hora se detuvo otra vez.',
+        'No quiero dormirme otra vez.',
+        'Necesito que me lleves de vuelta a la realidad.',
+        'Cuando cierro los ojos, todo se mueve.',
+        'Si te quedas más, me olvidaré de tu voz.',
+        'No sé si el sueño me está salvando o atrapando.'
+      ],
+      IROHA: [
+        'Las extraño, unnies...',
+        'No te acerques tanto.',
+        'La forma violeta no es una llave. Es una verdad.',
+        'El sueño me guarda, pero ya no quiero quedarme.',
+        'Nadie se acuerda de lo que pasa aquí.',
+        'No me llames si no vas a ayudarme.',
+        'Tú eres la única persona que aún siente que quiere irse.'
+      ],
+      MONSTER: [
+        'Si te acercas, ellas no te van a defender.',
+        'No hace falta correr.',
+        'Te quedas mejor aquí.',
+        'No es un sueño malo... solo te está cuidando.',
+        'La puerta está cerrada por tu miedo.',
+        'Nada se rompe si te quedas un poco más.',
+        'No me obligues a parecerte horrible.'
+      ]
+    };
 
     function clamp(v, min, max) {
       return Math.max(min, Math.min(max, v));
@@ -225,6 +328,23 @@
       ui.status.textContent = `ESTADO: ${text}`;
     }
 
+    function showDialogue(name, text) {
+      ui.dialogue.innerHTML = `<span class="speaker">${name}:</span> ${text}`;
+      ui.dialogue.classList.add('visible');
+      dialogueTimer = 160;
+    }
+
+    function hideDialogue() {
+      ui.dialogue.classList.remove('visible');
+    }
+
+    function randomAmbientLine(name) {
+      const arr = ambientDialogues[name] || [];
+      if (!arr.length) return;
+      const text = arr[Math.floor(Math.random() * arr.length)];
+      showDialogue(name, text);
+    }
+
     function resetGame() {
       player.x = 60;
       player.y = 440;
@@ -232,6 +352,7 @@
       player.sanity = 100;
       player.materials = 0;
       player.saved = 0;
+      player.activeHint = null;
       monster.x = 650;
       monster.y = 120;
       monster.speed = 1.2;
@@ -241,75 +362,71 @@
       door.open = false;
       door.active = false;
       pulse = 0;
-      doorFlash = 0;
       keys = {};
       forms.forEach(f => f.gained = false);
       members.forEach(m => m.saved = false);
       state = 'intro';
+      lastAmbientTalk = 0;
+      ambientCooldown = 0;
       ui.sanity.style.width = '100%';
       ui.materials.textContent = 'FORMAS: 0/5';
       setStatus('Despiertas en el suelo...');
       ui.restart.style.display = 'none';
+      hideDialogue();
     }
 
     function startGame() {
       if (state === 'intro') {
         state = 'play';
-        setStatus('yunas te llama desde la oscuridad');
+        setStatus('YUNAH te llama desde la oscuridad');
+        showDialogue('YUNAH', '¿Quién eres...? El sueño no es un lugar normal.');
       }
     }
 
     function collectForms() {
       for (const form of forms) {
-        if (!form.gained && dist(player.x, player.y, form.x, form.y) < 26) {
+        if (!form.gained && dist(player.x, player.y, form.x, form.y) < 24) {
           form.gained = true;
           player.materials += 1;
           ui.materials.textContent = `FORMAS: ${player.materials}/5`;
           setStatus(`recoges la forma ${form.color}`);
+          showDialogue(form.member, `He encontrado la forma ${form.color}.`);
         }
       }
     }
 
     function nearbyMember() {
+      let best = null;
+      let minDist = Infinity;
       for (const member of members) {
-        if (!member.saved && dist(player.x, player.y, member.x, member.y) < 34) {
-          return member;
+        if (member.saved) continue;
+        const d = dist(player.x, player.y, member.x, member.y);
+        if (d < minDist) {
+          minDist = d;
+          best = member;
         }
       }
-      return null;
+      return best && minDist < 36 ? best : null;
     }
 
-    function rescueMember() {
-      const member = nearbyMember();
+    function rescueMember(member) {
       if (!member) return;
-      if (member.name === 'YUNAH' && !forms[0].gained) {
-        setStatus('YUNAH: primero necesito que la forma roja salga a la luz');
-        return;
-      }
-      if (member.name === 'WONHEE' && !forms[1].gained) {
-        setStatus('WONHEE: la forma amarilla está escondida entre los materiales');
-        return;
-      }
-      if (member.name === 'MOKA' && !forms[2].gained) {
-        setStatus('MOKA: prueba donde el sueño se vuelve silencio');
-        return;
-      }
-      if (member.name === 'MINJU' && !forms[3].gained) {
-        setStatus('MINJU: no despiertas si no me traes la forma verde');
-        return;
-      }
-      if (member.name === 'IROHA' && !forms[4].gained) {
-        setStatus('IROHA: la forma violeta es la única que puede abrir la puerta');
+
+      const myForm = forms.find(f => f.member === member.name);
+      if (myForm && !myForm.gained) {
+        showDialogue(member.name, member.name === 'MINJU' ? 'Necesito que la forma verde me despierte.' : `Primero tienes que traer la forma ${myForm.color}.`);
         return;
       }
 
       member.saved = true;
       player.saved += 1;
       setStatus(`${member.name} despierta y te guía`);
+      showDialogue(member.name, member.hint);
+
       if (player.saved === 5) {
         door.active = true;
-        doorFlash = 1;
-        setStatus('la puerta del sueño muestra sus cinco colores');
+        setStatus('las cinco formas brillan en la puerta del sueño');
+        showDialogue('YUNAH', 'La puerta ya se abre. No la dejes cerrarse otra vez.');
       }
     }
 
@@ -323,6 +440,7 @@
       if (keys['ArrowRight'] || keys['KeyD']) dx += 1;
 
       if (dx !== 0 || dy !== 0) {
+        player.lastMoveAt = performance.now();
         const len = Math.hypot(dx, dy) || 1;
         const movX = (dx / len) * player.speed;
         const movY = (dy / len) * player.speed;
@@ -344,8 +462,8 @@
         const dyM = monster.y - player.y;
         const distM = Math.hypot(dxM, dyM) || 1;
         if (distM < pulse + monster.r + 16) {
-          monster.x += (dxM / distM) * 60;
-          monster.y += (dyM / distM) * 60;
+          monster.x += (dxM / distM) * 65;
+          monster.y += (dyM / distM) * 65;
           monster.x = clamp(monster.x, monster.r, W - monster.r);
           monster.y = clamp(monster.y, monster.r, H - monster.r);
         }
@@ -353,7 +471,8 @@
       }
 
       if (keys['KeyE']) {
-        rescueMember();
+        const m = nearbyMember();
+        if (m) rescueMember(m);
       }
 
       collectForms();
@@ -389,7 +508,7 @@
       if (state !== 'play') return;
 
       const inSafe = safeZones.some(z => dist(player.x, player.y, z.x, z.y) < z.r);
-      const near = dist(player.x, player.y, monster.x, monster.y) < 90;
+      const near = dist(player.x, player.y, monster.x, monster.y) < 95;
 
       if (near && !inSafe) player.sanity -= 0.35;
       else if (inSafe) player.sanity += 0.2;
@@ -399,6 +518,7 @@
       if (player.sanity <= 0 || dist(player.x, player.y, monster.x, monster.y) < player.r + monster.r + 2) {
         state = 'lose';
         setStatus('el sueño te devora');
+        showDialogue('MONSTER', 'Si te acercas, ellas no te van a defender.');
         ui.restart.style.display = 'inline-block';
       }
     }
@@ -412,16 +532,36 @@
       }
     }
 
+    function ambientTalks() {
+      if (state !== 'play') return;
+      const now = performance.now();
+      if (now - lastAmbientTalk < 3000) return;
+
+      const visible = members.filter(m => !m.saved && dist(player.x, player.y, m.x, m.y) < 120);
+      if (!visible.length) return;
+
+      const target = visible[Math.floor(Math.random() * visible.length)];
+      const line = ambientDialogues[target.name][Math.floor(Math.random() * ambientDialogues[target.name].length)];
+      showDialogue(target.name, line);
+      lastAmbientTalk = now;
+    }
+
     function update() {
       if (state === 'intro') {
         if (keys['Enter']) startGame();
         return;
       }
+
       if (state !== 'play') return;
+
       updatePlayer();
       updateMonster();
       updateSanity();
       updateDoor();
+      ambientTalks();
+
+      if (dialogueTimer > 0) dialogueTimer -= 1;
+      if (dialogueTimer === 0) hideDialogue();
     }
 
     function drawBackground() {
@@ -542,7 +682,6 @@
       ctx.arc(monster.x, monster.y, monster.r + Math.sin(Date.now() / 180) * 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // orejas de conejo
       ctx.fillStyle = '#ffc4e3';
       ctx.beginPath();
       ctx.moveTo(monster.x - 12, monster.y - 22);
@@ -557,7 +696,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // ojos
       ctx.fillStyle = '#fff';
       ctx.beginPath();
       ctx.arc(monster.x - 8, monster.y - 4, 4, 0, Math.PI * 2);
@@ -583,7 +721,7 @@
 
     function drawIntro() {
       if (state !== 'intro') return;
-      ctx.fillStyle = 'rgba(10, 12, 16, 0.7)';
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.72)';
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#f8eaff';
       ctx.font = 'bold 30px Courier New';
@@ -599,7 +737,7 @@
 
     function drawEnding() {
       if (state === 'lose') {
-        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillStyle = 'rgba(0,0,0,0.82)';
         ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#ff5d73';
         ctx.font = 'bold 30px Courier New';
@@ -659,6 +797,7 @@
       if (e.code === 'Enter' && state === 'intro') startGame();
       if (e.code === 'Space') e.preventDefault();
     });
+
     addEventListener('keyup', (e) => {
       keys[e.code] = false;
     });
